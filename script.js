@@ -1,37 +1,61 @@
-const map = L.map('map').setView([20, 0], 3);
+const map = L.map('map').setView([63.5, 10.5], 5); // Centered on Norway
 
 // Base tile layer: OpenStreetMap
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-// Bathymetry overlay tile layer from OpenSeaMap
-const bathymetryTiles = L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png', {
-  attribution: 'Map data © OpenSeaMap contributors',
-  opacity: 0.6
-}).addTo(map);
+// Marker for user's current location
+let userMarker = null;
 
-// Function to get depth using Open-Elevation API
+// Function to get depth using OpenTopoData GEBCO 2020
 async function getDepth(lat, lng) {
-  const response = await fetch(`https://api.opentopodata.org/v1/gebco2020?locations=${lat},${lng}`);
-  const data = await response.json();
-  if (data && data.results && data.results[0]) {
-    return data.results[0].elevation; // Depth (negative values underwater)
+  const url = `https://api.opentopodata.org/v1/gebco2020?locations=${lat},${lng}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.results && data.results.length) {
+    return data.results[0].elevation; // Negative values underwater
   }
-  throw new Error('No depth data');
+  throw new Error('Depth not found');
 }
 
+// Handle map clicks for depth
 map.on('click', async (e) => {
   const { lat, lng } = e.latlng;
-  const infoBox = document.getElementById('info');
-  infoBox.innerHTML = 'Loading depth...';
+  const info = document.getElementById('info');
+  info.textContent = 'Loading depth...';
   try {
     const depth = await getDepth(lat, lng);
-    infoBox.innerHTML = `
+    info.innerHTML = `
       Latitude: ${lat.toFixed(4)}, Longitude: ${lng.toFixed(4)}<br>
       Approx. Depth: ${Math.abs(depth).toFixed(1)} meters
     `;
   } catch (error) {
-    infoBox.innerHTML = 'Depth data unavailable.';
+    info.textContent = 'Depth data unavailable.';
   }
+});
+
+// Geolocation button logic
+document.getElementById('locate-btn').addEventListener('click', () => {
+  if (!navigator.geolocation) {
+    alert('Geolocation not supported.');
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition((pos) => {
+    const { latitude, longitude } = pos.coords;
+
+    // Add or update marker
+    if (userMarker) {
+      userMarker.setLatLng([latitude, longitude]);
+    } else {
+      userMarker = L.marker([latitude, longitude]).addTo(map)
+        .bindPopup('You are here!').openPopup();
+    }
+
+    // Move map to user's position
+    map.setView([latitude, longitude], 10);
+  }, () => {
+    alert('Unable to retrieve your location.');
+  });
 });
